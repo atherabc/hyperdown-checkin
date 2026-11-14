@@ -11,12 +11,25 @@ permissions:
   contents: read
 
 jobs:
+  # 搬运工：从 Secret 读出邮箱列表，传给 checkin（matrix 里不能直接用 secrets 上下文）
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      emails: ${{ steps.read.outputs.emails }}
+    steps:
+      - id: read
+        env:
+          EMAILS: ${{ secrets.HYPERDOWN_EMAILS }}
+        run: |
+          echo "emails=${EMAILS}" >> "$GITHUB_OUTPUT"
+
   checkin:
+    needs: prepare
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        email: ${{ fromJSON(secrets.HYPERDOWN_EMAILS) }}   # 自动按数组拆开，一个邮箱一个任务
+        email: ${{ fromJSON(needs.prepare.outputs.emails) }}
     steps:
       - uses: actions/checkout@v5
 
