@@ -1,4 +1,4 @@
-# Hyperdown 每日自动签到（邮箱列表在单个 Secret 里）。保活见 keepalive.yml。
+# Hyperdown 每日自动签到（邮箱列表在单个 Secret 里，单 job 依次签完）。保活见 keepalive.yml。
 name: Hyperdown Check-in
 
 on:
@@ -11,34 +11,8 @@ permissions:
   contents: read
 
 jobs:
-  # 搬运工：从 Secret 读出邮箱列表，传给 checkin（matrix 里不能直接用 secrets 上下文）
-  prepare:
-    runs-on: ubuntu-latest
-    outputs:
-      emails: ${{ steps.read.outputs.emails }}
-    steps:
-      - id: read
-        env:
-          EMAILS: ${{ secrets.HYPERDOWN_EMAILS }}
-        run: |
-          if [ -z "$EMAILS" ]; then
-            echo "::error::HYPERDOWN_EMAILS 为空：请确认已创建该 Secret 且内容非空"
-            exit 1
-          fi
-          # 多行值必须用 key<<分隔符 的 heredoc 写法
-          {
-            echo "emails<<ENDOFEMAILS"
-            printf '%s\n' "$EMAILS"
-            echo "ENDOFEMAILS"
-          } >> "$GITHUB_OUTPUT"
-
   checkin:
-    needs: prepare
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        email: ${{ fromJSON(needs.prepare.outputs.emails) }}
     steps:
       - uses: actions/checkout@v5
 
@@ -49,14 +23,41 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Run check-in (${{ matrix.email }})
+      - name: Run check-in for all accounts
         env:
-          HYPERDOWN_EMAIL: ${{ matrix.email }}
+          EMAILS: ${{ secrets.HYPERDOWN_EMAILS }}
           HYPERDOWN_PASSWORD: ${{ secrets.HYPERDOWN_PASSWORD }}
         run: |
-          set -euo pipefail
-          if [ -z "${HYPERDOWN_EMAIL:-}" ] || [ -z "${HYPERDOWN_PASSWORD:-}" ]; then
-            echo "::error::缺少 Secrets：请配置 HYPERDOWN_EMAILS 与 HYPERDOWN_PASSWORD"
-            exit 1
-          fi
-          python checkin.py
+          set -uo pipefail
+          if [ -z "$EMAILS" ]; then echo "::error::HYPERDOWN_EMAILS 为空：请确认已创建该 Secret"; exit 1; fi
+          if [ -z "$HYPERDOWN_PASSWORD" ]; then echo "::error::HYPERDOWN_PASSWORD 为空"; exit 1; fi
+
+          total=0; ok=0; failed=0
+          {
+            echo "## Hyperdown 签到结果"
+            echo ""
+            echo "| 账号 | 结果 |"
+            echo "| --- | --- |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          while IFS= read -r line; do
+            # 只留邮箱本身：去掉空白及可能误带的引号、逗号、中括号
+            email=$(printf '%s' "$line" | tr -d '][:space:]",[')
+            if [ -z "$email" ]; then continue; fi
+            total=$((total+1))
+            echo "===== [$total] $email ====="
+            if HYPERDOWN_EMAIL="$email" python checkin.py; then
+              ok=$((ok+1))
+              echo "| $email | 成功 |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              code=$?
+              failed=$((failed+1))
+              echo "::error::账号 $email 签到失败 (exit $code)"
+              echo "| $email | 失败 (exit $code) |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+            sleep 2
+          done <<< "$EMAILS"
+
+          echo "===== 汇总: 共 $total 个，成功 $ok，失败 $failed ====="
+          echo "汇总：共 $total 个账号，成功 $ok，失败 $failed" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$total" -eq 0 ] || [ "$failed" -ne 0 ]; then exit 1; fi
