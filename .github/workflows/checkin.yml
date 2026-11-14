@@ -21,7 +21,16 @@ jobs:
         env:
           EMAILS: ${{ secrets.HYPERDOWN_EMAILS }}
         run: |
-          echo "emails=${EMAILS}" >> "$GITHUB_OUTPUT"
+          if [ -z "$EMAILS" ]; then
+            echo "::error::HYPERDOWN_EMAILS 为空：请确认已创建该 Secret 且内容非空"
+            exit 1
+          fi
+          # 多行值必须用 key<<分隔符 的 heredoc 写法
+          {
+            echo "emails<<ENDOFEMAILS"
+            printf '%s\n' "$EMAILS"
+            echo "ENDOFEMAILS"
+          } >> "$GITHUB_OUTPUT"
 
   checkin:
     needs: prepare
