@@ -1,4 +1,4 @@
-# Hyperdown 每日自动签到。保活见 keepalive.yml。
+# Hyperdown 每日自动签到（邮箱列表在单个 Secret 里）。保活见 keepalive.yml。
 name: Hyperdown Check-in
 
 on:
@@ -13,6 +13,10 @@ permissions:
 jobs:
   checkin:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        email: ${{ fromJSON(secrets.HYPERDOWN_EMAILS) }}   # 自动按数组拆开，一个邮箱一个任务
     steps:
       - uses: actions/checkout@v5
 
@@ -23,14 +27,14 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Run check-in
+      - name: Run check-in (${{ matrix.email }})
         env:
-          HYPERDOWN_EMAIL: ${{ secrets.HYPERDOWN_EMAIL }}
+          HYPERDOWN_EMAIL: ${{ matrix.email }}
           HYPERDOWN_PASSWORD: ${{ secrets.HYPERDOWN_PASSWORD }}
         run: |
           set -euo pipefail
           if [ -z "${HYPERDOWN_EMAIL:-}" ] || [ -z "${HYPERDOWN_PASSWORD:-}" ]; then
-            echo "::error::缺少 Secrets：请配置 HYPERDOWN_EMAIL 与 HYPERDOWN_PASSWORD"
+            echo "::error::缺少 Secrets：请配置 HYPERDOWN_EMAILS 与 HYPERDOWN_PASSWORD"
             exit 1
           fi
           python checkin.py
