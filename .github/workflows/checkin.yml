@@ -55,7 +55,7 @@ jobs:
               echo "::error::账号 $email 签到失败 (exit $code)"
               echo "| $email | 失败 (exit $code) |" >> "$GITHUB_STEP_SUMMARY"
             fi
-            sleep 2
+            sleep 30
           done <<< "$EMAILS"
 
           echo "===== 汇总: 共 $total 个，成功 $ok，失败 $failed ====="
