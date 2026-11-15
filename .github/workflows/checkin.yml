@@ -45,6 +45,8 @@ jobs:
             email=$(printf '%s' "$line" | tr -d '][:space:]",[')
             if [ -z "$email" ]; then continue; fi
             total=$((total+1))
+            # 关键：清掉上一个账号遗留的 token，强制本账号重新登录
+            rm -f tokens.json
             echo "===== [$total] $email ====="
             if HYPERDOWN_EMAIL="$email" python checkin.py; then
               ok=$((ok+1))
